@@ -52,6 +52,42 @@ export default function WatchPage() {
     };
   }, [isPlaying]);
 
+  useEffect(() => {
+    const lockOrientation = async () => {
+      if (!isPlaying) return;
+
+      try {
+        const screenOrientation = screen.orientation as any;
+        if (screenOrientation && screenOrientation.lock) {
+          await screenOrientation.lock("landscape").catch(() => {
+            // Fallback: tidak semua browser support
+          });
+        }
+      } catch (error) {
+        console.log("Orientation lock not supported");
+      }
+    };
+
+    const unlockOrientation = () => {
+      try {
+        const screenOrientation = screen.orientation as any;
+        if (screenOrientation && screenOrientation.unlock) {
+          screenOrientation.unlock();
+        }
+      } catch (error) {
+        console.log("Orientation unlock not supported");
+      }
+    };
+
+    if (isPlaying) {
+      lockOrientation();
+    }
+
+    return () => {
+      unlockOrientation();
+    };
+  }, [isPlaying]);
+
   if (!movie) {
     return null;
   }
