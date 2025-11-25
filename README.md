@@ -1,36 +1,109 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# FilmFlik - Film Streaming Platform
 
-## Getting Started
+Platform streaming film dengan subtitle Indonesia menggunakan Next.js 16.
 
-First, run the development server:
+## 🎬 Fitur Utama
+
+- **Video Player HTML5** dengan kontrol penuh
+- **Subtitle Indonesia** dalam format WebVTT
+- **Pencarian Film** real-time
+- **Info Detail Film** dengan modal interaktif
+- **Auto-pause Info** - Menampilkan info film setelah 30 detik pause
+- **Responsive Design** - Optimized untuk semua device
+- **13+ Film Sample** dari public domain
+
+## 🚀 Teknologi
+
+- **Next.js 16** (App Router)
+- **React 19**
+- **TypeScript**
+- **Tailwind CSS 4**
+- **Lucide React** untuk icons
+
+## 📦 Instalasi
 
 ```bash
+# Clone repository
+git clone https://github.com/Moc1703/filmflik.git
+
+# Install dependencies
+npm install
+
+# Run development server
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+
+# Build for production
+npm run build
+
+# Start production server
+npm start
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 🌐 Deploy ke Vercel
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+1. Push code ke GitHub (sudah selesai ✅)
+2. Buka [Vercel](https://vercel.com)
+3. Import repository `Moc1703/filmflik`
+4. Klik "Deploy"
+5. Done! 🎉
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Vercel akan otomatis detect Next.js project dan menggunakan konfigurasi yang tepat.
 
-## Learn More
+## 📁 Struktur Project
 
-To learn more about Next.js, take a look at the following resources:
+```
+film-streaming/
+├── app/
+│   ├── page.tsx              # Homepage
+│   ├── layout.tsx            # Root layout
+│   ├── globals.css           # Global styles
+│   └── watch/[id]/
+│       └── page.tsx          # Video player page
+├── components/
+│   ├── Navbar.tsx            # Navigation dengan search
+│   ├── Hero.tsx              # Hero section dengan modal
+│   └── MovieRow.tsx          # Grid film
+├── lib/
+│   └── movies.ts             # Data film
+├── public/
+│   └── subtitles/            # File subtitle .vtt
+└── ...
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 🎯 Cara Menggunakan
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+1. **Browse Film**: Scroll homepage untuk lihat koleksi film
+2. **Search**: Klik icon search di navbar untuk cari film
+3. **Info Detail**: Klik "Info Lebih" untuk lihat detail lengkap
+4. **Tonton Film**: Klik "Putar" atau thumbnail film
+5. **Pause Info**: Pause video 30 detik untuk lihat info film
 
-## Deploy on Vercel
+## 📝 Menambah Film Baru
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Edit file `lib/movies.ts`:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```typescript
+{
+  id: "film-id",
+  title: "Judul Film",
+  description: "Deskripsi film...",
+  thumbnail: "URL_thumbnail",
+  videoUrl: "URL_video.mp4",
+  subtitleUrl: "/subtitles/film-id.vtt", // optional
+  duration: "2:30:00",
+  genre: "Action",
+  year: 2024,
+}
+```
+
+## 🔒 Environment Variables
+
+Tidak ada environment variable yang diperlukan untuk versi ini.
+
+## 📄 License
+
+MIT License - Free to use untuk proyek personal dan komersial.
+
+## 👨‍💻 Developer
+
+Dibuat dengan ❤️ menggunakan Factory AI
