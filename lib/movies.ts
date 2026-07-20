@@ -24,6 +24,18 @@ export interface Movie {
  */
 export const movies: Movie[] = [
   {
+    id: "bunny-upload-1",
+    title: "Featured Upload",
+    description:
+      "Featured title from the FILMflik library. Playback is delivered through a protected same-origin stream.",
+    // Replace with your own poster on Bunny or /public/thumbnails/
+    thumbnail:
+      "https://storage.googleapis.com/gtv-videos-bucket/sample/images/ForBiggerFun.jpg",
+    duration: "—",
+    genre: "Featured",
+    year: 2026,
+  },
+  {
     id: "sintel",
     title: "Sintel",
     description:

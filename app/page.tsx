@@ -28,6 +28,10 @@ export default function Home() {
       <div className="relative z-10 -mt-10 md:-mt-16 space-y-2 pb-8">
         <ContinueWatchingRow />
         <MovieRow id="movies" title="Popular on FILMflik" movies={movies} />
+        <MovieRow
+          title="Featured"
+          movies={movies.filter((m) => m.genre === "Featured")}
+        />
         <MovieRow id="latest" title="Latest" movies={latestMovies} />
         <div id="genres" className="scroll-mt-24 space-y-2">
           {genreRows.map((row) => (

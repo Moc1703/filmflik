@@ -7,7 +7,8 @@ import { movies } from "@/lib/movies";
 import { useEffect, useState } from "react";
 
 export default function Hero() {
-  const featuredMovie = movies[0];
+  const featuredMovie =
+    movies.find((m) => m.genre === "Featured") ?? movies[0];
   const [showModal, setShowModal] = useState(false);
 
   useEffect(() => {
