@@ -5,6 +5,8 @@ export interface PlayerPrefs {
   volume: number;
   muted: boolean;
   pauseInfoEnabled: boolean;
+  /** Preferred HLS height in px, or -1 for Auto */
+  qualityHeight: number;
 }
 
 export interface WatchProgress {
@@ -22,6 +24,7 @@ const DEFAULT_PREFS: PlayerPrefs = {
   volume: 1,
   muted: false,
   pauseInfoEnabled: true,
+  qualityHeight: -1,
 };
 
 function canUseStorage(): boolean {
@@ -41,6 +44,11 @@ export function getPlayerPrefs(): PlayerPrefs {
         typeof parsed.pauseInfoEnabled === "boolean"
           ? parsed.pauseInfoEnabled
           : true,
+      qualityHeight:
+        typeof parsed.qualityHeight === "number" &&
+        Number.isFinite(parsed.qualityHeight)
+          ? Math.round(parsed.qualityHeight)
+          : -1,
     };
   } catch {
     return { ...DEFAULT_PREFS };
@@ -56,6 +64,7 @@ export function setPlayerPrefs(prefs: PlayerPrefs): void {
         volume: Math.min(1, Math.max(0, prefs.volume)),
         muted: prefs.muted,
         pauseInfoEnabled: prefs.pauseInfoEnabled,
+        qualityHeight: Math.round(prefs.qualityHeight),
       })
     );
   } catch {

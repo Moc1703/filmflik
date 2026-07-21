@@ -208,7 +208,7 @@ export default function SeekBar({
           style={{ left: `${hoverRatio * 100}%` }}
         >
           {(previewReady && previewUrl) || poster ? (
-            <div className="rounded-md overflow-hidden border border-white/20 shadow-2xl bg-black w-[9rem] aspect-video relative">
+            <div className="overflow-hidden border border-line bg-background w-[9rem] aspect-video relative">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={previewUrl || poster}
@@ -217,7 +217,7 @@ export default function SeekBar({
               />
             </div>
           ) : null}
-          <span className="rounded-md bg-black/90 text-white text-xs font-medium px-2 py-1 tabular-nums shadow-lg border border-white/10">
+          <span className="bg-background/95 text-foreground text-xs font-medium px-2 py-1 tabular-nums border border-line">
             {formatTime(hoverTime)}
           </span>
         </div>

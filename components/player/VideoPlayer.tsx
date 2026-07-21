@@ -29,6 +29,10 @@ import {
   patchPlayerPrefs,
   saveWatchProgress,
 } from "@/lib/player-storage";
+import {
+  applyAutoLevelCap,
+  getPreviewAbrHint,
+} from "@/lib/network-quality";
 import { getMediaErrorMessage } from "@/lib/media-error";
 import VolumeSlider from "@/components/player/VolumeSlider";
 import SeekBar from "@/components/player/SeekBar";
@@ -46,11 +50,26 @@ export interface VideoPlayerProps {
   onBack?: () => void;
   pauseInfoDelayMs?: number;
   infoOverlay?: ReactNode;
+  /** Shown on the finished screen — e.g. more titles to watch. */
+  endRecommendations?: ReactNode;
 }
 
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2] as const;
 
-type SettingsTab = "speed" | "captions" | "general" | null;
+type SettingsTab = "quality" | "speed" | "captions" | "general" | null;
+
+type QualityOption = {
+  /** hls.js level index, or -1 for Auto */
+  level: number;
+  label: string;
+  height: number;
+};
+
+function qualityLabel(height: number, bitrate?: number): string {
+  if (height > 0) return `${height}p`;
+  if (bitrate && bitrate > 0) return `${Math.round(bitrate / 1000)} kbps`;
+  return "Unknown";
+}
 
 function formatTime(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
@@ -74,6 +93,7 @@ export default function VideoPlayer({
   onBack,
   pauseInfoDelayMs = 30000,
   infoOverlay,
+  endRecommendations,
 }: VideoPlayerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -84,6 +104,7 @@ export default function VideoPlayer({
   const progressSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const startAppliedRef = useRef(false);
   const volumeBeforeMuteRef = useRef(1);
+  const hlsRef = useRef<import("hls.js").default | null>(null);
 
   const [playing, setPlaying] = useState(false);
   const [ended, setEnded] = useState(false);
@@ -109,6 +130,9 @@ export default function VideoPlayer({
   const [loadToken, setLoadToken] = useState(0);
   const [showHelp, setShowHelp] = useState(false);
   const [pauseInfoEnabled, setPauseInfoEnabled] = useState(true);
+  const [qualities, setQualities] = useState<QualityOption[]>([]);
+  const [qualityLevel, setQualityLevel] = useState(-1);
+  const [activeHeight, setActiveHeight] = useState(0);
 
   const clearHideTimer = () => {
     if (hideTimerRef.current) {
@@ -223,6 +247,17 @@ export default function VideoPlayer({
     setPlaybackRate(rate);
   }, []);
 
+  const selectQuality = useCallback((level: number) => {
+    const hls = hlsRef.current;
+    if (!hls) return;
+    hls.currentLevel = level;
+    setQualityLevel(level);
+    const height =
+      level < 0 ? -1 : hls.levels[level]?.height || -1;
+    patchPlayerPrefs({ qualityHeight: height });
+    revealControls();
+  }, [revealControls]);
+
   const toggleFullscreen = useCallback(async () => {
     const el = containerRef.current;
     const video = videoRef.current;
@@ -321,7 +356,7 @@ export default function VideoPlayer({
     startAppliedRef.current = false;
   }, [src, startAt, loadToken]);
 
-  // Apply prefs + autoplay when video mounts / retries
+  // Apply prefs + media source (MP4 or HLS) when video mounts / retries
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
@@ -329,7 +364,135 @@ export default function VideoPlayer({
     video.volume = prefs.volume;
     video.muted = prefs.muted;
     setError(null);
-    void video.play().catch(() => setShowControls(true));
+
+    let cancelled = false;
+    const isHls = /\.m3u8($|\?)/i.test(src);
+
+    const startPlayback = () => {
+      if (cancelled) return;
+      void video.play().catch(() => setShowControls(true));
+    };
+
+    const destroyHls = () => {
+      if (hlsRef.current) {
+        hlsRef.current.destroy();
+        hlsRef.current = null;
+      }
+    };
+
+    destroyHls();
+    setQualities([]);
+    setQualityLevel(-1);
+    setActiveHeight(0);
+
+    if (!isHls) {
+      video.src = src;
+      startPlayback();
+      return () => {
+        cancelled = true;
+        destroyHls();
+      };
+    }
+
+    void (async () => {
+      const Hls = (await import("hls.js")).default;
+      if (cancelled || !videoRef.current) return;
+
+      if (Hls.isSupported()) {
+        const preferredHeight = getPlayerPrefs().qualityHeight;
+        const hint = getPreviewAbrHint();
+        const hls = new Hls({
+          enableWorker: true,
+          lowLatencyMode: false,
+          // Prefer smoother playback over aggressive low-latency
+          maxBufferLength: 40,
+          maxMaxBufferLength: 80,
+          maxBufferSize: 60 * 1000 * 1000,
+          maxBufferHole: 0.5,
+          // Auto: start low for fast first frame, then ABR climbs with network
+          startLevel: preferredHeight > 0 ? -1 : hint.startLevel,
+          abrEwmaDefaultEstimate:
+            preferredHeight > 0 ? 1_500_000 : hint.abrEwmaDefaultEstimate,
+          abrBandWidthFactor: 0.9,
+          abrBandWidthUpFactor: 0.7,
+          progressive: true,
+        });
+        hlsRef.current = hls;
+
+        const syncLevels = () => {
+          const levels = hls.levels
+            .map((level, index) => ({
+              level: index,
+              height: level.height || 0,
+              label: qualityLabel(level.height || 0, level.bitrate),
+            }))
+            .sort((a, b) => b.height - a.height);
+          setQualities(levels);
+
+          if (preferredHeight > 0) {
+            const match = levels.find((l) => l.height === preferredHeight);
+            const fallback =
+              match ||
+              levels.find((l) => l.height <= preferredHeight) ||
+              levels[levels.length - 1];
+            if (fallback) {
+              hls.currentLevel = fallback.level;
+              setQualityLevel(fallback.level);
+              setActiveHeight(fallback.height);
+              return;
+            }
+          }
+
+          const cap = applyAutoLevelCap(
+            hls.levels.map((l) => ({ height: l.height || 0 })),
+            hint.maxHeight
+          );
+          if (cap >= 0) hls.autoLevelCapping = cap;
+          hls.currentLevel = -1;
+          setQualityLevel(-1);
+        };
+
+        hls.loadSource(src);
+        hls.attachMedia(video);
+        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+          syncLevels();
+          startPlayback();
+        });
+        hls.on(Hls.Events.LEVEL_SWITCHED, (_event, data) => {
+          const height = hls.levels[data.level]?.height || 0;
+          setActiveHeight(height);
+          if (hls.autoLevelEnabled) {
+            setQualityLevel(-1);
+          } else {
+            setQualityLevel(data.level);
+          }
+        });
+        hls.on(Hls.Events.ERROR, (_event, data) => {
+          if (!data.fatal) return;
+          if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+            hls.startLoad();
+            return;
+          }
+          if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+            hls.recoverMediaError();
+            return;
+          }
+          setError("Adaptive stream failed to load");
+          setShowControls(true);
+        });
+      } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+        video.src = src;
+        startPlayback();
+      } else {
+        setError("HLS playback is not supported in this browser");
+        setShowControls(true);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      destroyHls();
+    };
   }, [loadToken, src]);
 
   useEffect(() => {
@@ -790,7 +953,6 @@ export default function VideoPlayer({
         key={`${src}-${loadToken}`}
         ref={videoRef}
         className="w-full h-full object-contain"
-        src={src}
         poster={poster}
         playsInline
         preload="auto"
@@ -814,21 +976,21 @@ export default function VideoPlayer({
       {error && (
         <div
           data-controls
-          className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-black/90 px-6 text-center"
+          className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-background/92 px-6 text-center backdrop-blur-sm"
           onClick={(e) => e.stopPropagation()}
         >
-          <AlertCircle className="w-12 h-12 text-brand mb-4" />
-          <h3 className="text-white text-xl font-semibold mb-2">
+          <AlertCircle className="w-10 h-10 text-brand mb-4" />
+          <h3 className="ff-display text-foreground text-xl md:text-2xl font-semibold mb-2 tracking-tight">
             Playback error
           </h3>
-          <p className="text-white/60 max-w-md mb-8 text-sm md:text-base">
+          <p className="text-muted max-w-md mb-8 text-sm md:text-base">
             {error}
           </p>
           <div className="flex flex-wrap gap-3 justify-center">
             <button
               type="button"
               onClick={retryLoad}
-              className="inline-flex items-center gap-2 bg-brand hover:bg-red-600 text-white px-5 py-2.5 rounded-lg font-semibold transition"
+              className="inline-flex items-center gap-2 bg-brand hover:bg-[#efb56f] text-[#1a1208] px-5 py-2.5 font-semibold transition-colors"
             >
               <RotateCcw className="w-4 h-4" />
               Retry
@@ -837,7 +999,7 @@ export default function VideoPlayer({
               <button
                 type="button"
                 onClick={onBack}
-                className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/15 text-white px-5 py-2.5 rounded-lg font-semibold transition border border-white/10"
+                className="inline-flex items-center gap-2 border border-line bg-foreground/5 hover:bg-foreground/10 text-foreground px-5 py-2.5 font-semibold transition-colors"
               >
                 <Home className="w-4 h-4" />
                 Back to Home
@@ -858,7 +1020,7 @@ export default function VideoPlayer({
       {skipFlash && !error && (
         <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
           <div
-            className={`flex items-center gap-2 rounded-full bg-black/55 backdrop-blur-md px-5 py-3 text-white text-sm font-medium ${
+            className={`flex items-center gap-2 bg-background/70 backdrop-blur-md border border-line px-4 py-2.5 text-foreground text-sm font-medium ${
               skipFlash === "back" ? "mr-auto ml-[12%]" : "ml-auto mr-[12%]"
             }`}
           >
@@ -883,7 +1045,7 @@ export default function VideoPlayer({
           <button
             type="button"
             data-controls
-            className="pointer-events-auto w-[4.5rem] h-[4.5rem] md:w-20 md:h-20 rounded-full bg-white/95 hover:bg-white text-black flex items-center justify-center transition shadow-[0_8px_32px_rgba(0,0,0,0.45)] hover:scale-105 active:scale-95"
+            className="pointer-events-auto w-16 h-16 md:w-[4.5rem] md:h-[4.5rem] bg-brand hover:bg-[#efb56f] text-[#1a1208] flex items-center justify-center transition-colors active:scale-95"
             onClick={(e) => {
               e.stopPropagation();
               setShowPauseInfo(false);
@@ -891,7 +1053,7 @@ export default function VideoPlayer({
             }}
             aria-label="Continue playing"
           >
-            <Play className="w-9 h-9 ml-1" fill="currentColor" />
+            <Play className="w-8 h-8 ml-0.5" fill="currentColor" />
           </button>
         </div>
       )}
@@ -900,35 +1062,39 @@ export default function VideoPlayer({
       {ended && !error && (
         <div
           data-controls
-          className="absolute inset-0 z-[35] flex flex-col items-center justify-center bg-black/75 backdrop-blur-sm px-6 text-center"
+          className="absolute inset-0 z-[35] flex flex-col items-center justify-center bg-background/90 backdrop-blur-sm px-5 md:px-10 overflow-y-auto py-10"
           onClick={(e) => e.stopPropagation()}
         >
-          <p className="text-white/50 text-xs font-semibold tracking-[0.2em] uppercase mb-3">
-            Finished
-          </p>
-          <h3 className="text-white text-2xl md:text-4xl font-bold mb-2 max-w-2xl">
-            {title}
-          </h3>
-          {meta && <p className="text-white/50 mb-8">{meta}</p>}
-          <div className="flex flex-wrap gap-3 justify-center">
-            <button
-              type="button"
-              onClick={replay}
-              className="inline-flex items-center gap-2 bg-brand hover:bg-red-600 text-white px-6 py-3 rounded-xl font-semibold transition"
-            >
-              <RotateCcw className="w-5 h-5" />
-              Watch Again
-            </button>
-            {onBack && (
+          <div className="w-full max-w-4xl text-center">
+            <p className="text-brand text-xs font-semibold tracking-[0.2em] uppercase mb-3">
+              Finished
+            </p>
+            <h3 className="ff-display text-foreground text-2xl md:text-4xl font-semibold mb-2 tracking-tight">
+              {title}
+            </h3>
+            {meta && <p className="text-muted mb-6 text-sm">{meta}</p>}
+            <div className="flex flex-wrap gap-3 justify-center mb-10">
               <button
                 type="button"
-                onClick={onBack}
-                className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/15 text-white px-6 py-3 rounded-xl font-semibold transition border border-white/10"
+                onClick={replay}
+                className="inline-flex items-center gap-2 bg-brand hover:bg-[#efb56f] text-[#1a1208] px-6 py-3 font-semibold transition-colors"
               >
-                <Home className="w-5 h-5" />
-                Back to Home
+                <RotateCcw className="w-5 h-5" />
+                Watch again
               </button>
-            )}
+              {onBack && (
+                <button
+                  type="button"
+                  onClick={onBack}
+                  className="inline-flex items-center gap-2 border border-line bg-foreground/5 hover:bg-foreground/10 text-foreground px-6 py-3 font-semibold transition-colors"
+                >
+                  <Home className="w-5 h-5" />
+                  Back to Home
+                </button>
+              )}
+            </div>
+
+            {endRecommendations}
           </div>
         </div>
       )}
@@ -937,15 +1103,17 @@ export default function VideoPlayer({
       {showPauseInfo && infoOverlay && !ended && !error && !playing && (
         <div
           data-controls
-          className="absolute inset-0 bg-black/80 flex items-center justify-center z-[45]"
+          className="absolute inset-0 bg-background/88 flex items-center justify-center z-[45] backdrop-blur-sm"
           onClick={(e) => {
             e.stopPropagation();
             setShowPauseInfo(false);
             togglePlay();
           }}
         >
-          <div className="pointer-events-none">{infoOverlay}</div>
-          <p className="absolute bottom-24 text-white/40 text-sm">
+          <div className="pointer-events-none w-full max-w-7xl px-5 md:px-12 lg:px-16">
+            {infoOverlay}
+          </div>
+          <p className="absolute bottom-24 text-muted text-sm">
             Tap to continue
           </p>
         </div>
@@ -987,11 +1155,11 @@ export default function VideoPlayer({
               </button>
             )}
             <div className="min-w-0 flex-1 pt-1">
-              <p className="text-white font-semibold text-base md:text-lg truncate drop-shadow">
+              <p className="ff-display text-foreground font-semibold text-base md:text-lg truncate">
                 {title}
               </p>
               {meta && (
-                <p className="text-white/65 text-xs md:text-sm truncate mt-0.5">
+                <p className="text-muted text-xs md:text-sm truncate mt-0.5">
                   {meta}
                 </p>
               )}
@@ -1056,9 +1224,9 @@ export default function VideoPlayer({
                 onToggleMute={toggleMute}
               />
 
-              <span className="text-[11px] md:text-sm tabular-nums text-white/90 ml-0.5 whitespace-nowrap">
+              <span className="text-[11px] md:text-sm tabular-nums text-foreground/90 ml-0.5 whitespace-nowrap">
                 {formatTime(currentTime)}
-                <span className="text-white/45"> / {formatTime(duration)}</span>
+                <span className="text-muted"> / {formatTime(duration)}</span>
               </span>
 
               <div className="flex-1" />
@@ -1080,7 +1248,9 @@ export default function VideoPlayer({
                   data-settings-btn
                   className={`ff-icon-btn ${settingsTab ? "text-brand" : ""}`}
                   onClick={() =>
-                    setSettingsTab((tab) => (tab ? null : "speed"))
+                    setSettingsTab((tab) =>
+                      tab ? null : qualities.length > 0 ? "quality" : "speed"
+                    )
                   }
                   aria-label="Settings"
                   title="Settings"
@@ -1090,15 +1260,28 @@ export default function VideoPlayer({
                 {settingsTab && (
                   <div
                     data-settings-panel
-                    className="absolute bottom-full right-0 mb-2 w-60 rounded-xl bg-zinc-900/95 backdrop-blur-md border border-white/10 shadow-2xl overflow-hidden"
+                    className="absolute bottom-full right-0 mb-2 w-64 bg-surface/95 backdrop-blur-md border border-line overflow-hidden"
                   >
-                    <div className="flex border-b border-white/10">
+                    <div className="flex border-b border-line">
+                      {qualities.length > 0 && (
+                        <button
+                          type="button"
+                          className={`flex-1 px-1.5 py-2.5 text-[10px] font-semibold uppercase tracking-wider transition ${
+                            settingsTab === "quality"
+                              ? "text-brand bg-foreground/5"
+                              : "text-muted hover:text-foreground"
+                          }`}
+                          onClick={() => setSettingsTab("quality")}
+                        >
+                          Quality
+                        </button>
+                      )}
                       <button
                         type="button"
-                        className={`flex-1 px-2 py-2.5 text-[10px] font-semibold uppercase tracking-wider transition ${
+                        className={`flex-1 px-1.5 py-2.5 text-[10px] font-semibold uppercase tracking-wider transition ${
                           settingsTab === "speed"
-                            ? "text-brand bg-white/5"
-                            : "text-white/50 hover:text-white"
+                            ? "text-brand bg-foreground/5"
+                            : "text-muted hover:text-foreground"
                         }`}
                         onClick={() => setSettingsTab("speed")}
                       >
@@ -1106,10 +1289,10 @@ export default function VideoPlayer({
                       </button>
                       <button
                         type="button"
-                        className={`flex-1 px-2 py-2.5 text-[10px] font-semibold uppercase tracking-wider transition ${
+                        className={`flex-1 px-1.5 py-2.5 text-[10px] font-semibold uppercase tracking-wider transition ${
                           settingsTab === "captions"
-                            ? "text-brand bg-white/5"
-                            : "text-white/50 hover:text-white"
+                            ? "text-brand bg-foreground/5"
+                            : "text-muted hover:text-foreground"
                         }`}
                         onClick={() => setSettingsTab("captions")}
                       >
@@ -1117,26 +1300,60 @@ export default function VideoPlayer({
                       </button>
                       <button
                         type="button"
-                        className={`flex-1 px-2 py-2.5 text-[10px] font-semibold uppercase tracking-wider transition ${
+                        className={`flex-1 px-1.5 py-2.5 text-[10px] font-semibold uppercase tracking-wider transition ${
                           settingsTab === "general"
-                            ? "text-brand bg-white/5"
-                            : "text-white/50 hover:text-white"
+                            ? "text-brand bg-foreground/5"
+                            : "text-muted hover:text-foreground"
                         }`}
                         onClick={() => setSettingsTab("general")}
                       >
                         General
                       </button>
                     </div>
+                    {settingsTab === "quality" && qualities.length > 0 && (
+                      <div className="py-1.5 max-h-56 overflow-y-auto">
+                        <button
+                          type="button"
+                          className={`w-full text-left px-4 py-2 text-sm transition hover:bg-foreground/5 ${
+                            qualityLevel < 0
+                              ? "text-brand font-semibold"
+                              : "text-foreground/90"
+                          }`}
+                          onClick={() => selectQuality(-1)}
+                        >
+                          Auto
+                          {qualityLevel < 0 && activeHeight > 0 ? (
+                            <span className="ml-2 text-muted font-normal">
+                              {qualityLabel(activeHeight)}
+                            </span>
+                          ) : null}
+                        </button>
+                        {qualities.map((q) => (
+                          <button
+                            key={q.level}
+                            type="button"
+                            className={`w-full text-left px-4 py-2 text-sm transition hover:bg-foreground/5 ${
+                              qualityLevel === q.level
+                                ? "text-brand font-semibold"
+                                : "text-foreground/90"
+                            }`}
+                            onClick={() => selectQuality(q.level)}
+                          >
+                            {q.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                     {settingsTab === "speed" && (
                       <div className="py-1.5 max-h-56 overflow-y-auto">
                         {SPEEDS.map((rate) => (
                           <button
                             key={rate}
                             type="button"
-                            className={`w-full text-left px-4 py-2 text-sm transition hover:bg-white/10 ${
+                            className={`w-full text-left px-4 py-2 text-sm transition hover:bg-foreground/5 ${
                               playbackRate === rate
                                 ? "text-brand font-semibold"
-                                : "text-white/90"
+                                : "text-foreground/90"
                             }`}
                             onClick={() => setSpeed(rate)}
                           >
@@ -1151,10 +1368,10 @@ export default function VideoPlayer({
                           <>
                             <button
                               type="button"
-                              className={`w-full text-left px-4 py-2 text-sm transition hover:bg-white/10 ${
+                              className={`w-full text-left px-4 py-2 text-sm transition hover:bg-foreground/5 ${
                                 !subtitlesOn
                                   ? "text-brand font-semibold"
-                                  : "text-white/90"
+                                  : "text-foreground/90"
                               }`}
                               onClick={() => setSubtitlesOn(false)}
                             >
@@ -1162,10 +1379,10 @@ export default function VideoPlayer({
                             </button>
                             <button
                               type="button"
-                              className={`w-full text-left px-4 py-2 text-sm transition hover:bg-white/10 ${
+                              className={`w-full text-left px-4 py-2 text-sm transition hover:bg-foreground/5 ${
                                 subtitlesOn
                                   ? "text-brand font-semibold"
-                                  : "text-white/90"
+                                  : "text-foreground/90"
                               }`}
                               onClick={() => setSubtitlesOn(true)}
                             >
@@ -1173,7 +1390,7 @@ export default function VideoPlayer({
                             </button>
                           </>
                         ) : (
-                          <p className="px-4 py-3 text-sm text-white/45">
+                          <p className="px-4 py-3 text-sm text-muted">
                             No captions available
                           </p>
                         )}
@@ -1181,7 +1398,7 @@ export default function VideoPlayer({
                     )}
                     {settingsTab === "general" && (
                       <div className="py-2 px-4 space-y-3">
-                        <label className="flex items-center justify-between gap-3 text-sm text-white/90 cursor-pointer">
+                        <label className="flex items-center justify-between gap-3 text-sm text-foreground/90 cursor-pointer">
                           <span>Pause info overlay</span>
                           <input
                             type="checkbox"
@@ -1197,7 +1414,7 @@ export default function VideoPlayer({
                         </label>
                         <button
                           type="button"
-                          className="w-full text-left text-sm text-white/70 hover:text-white transition py-1"
+                          className="w-full text-left text-sm text-muted hover:text-foreground transition py-1"
                           onClick={() => {
                             setSettingsTab(null);
                             setShowHelp(true);

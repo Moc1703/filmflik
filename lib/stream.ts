@@ -1,75 +1,77 @@
 import "server-only";
 
-import { getMovieById, type Movie } from "@/lib/movies";
-import { getBunnyPathForMovie } from "@/lib/media.server";
-import { signBunnyUrl, isBunnyTokenConfigured } from "@/lib/bunny-sign";
-import { getBunnyCdnBase } from "@/lib/cdn";
+import type { CatalogEntry } from "@/lib/catalog";
+import { getCatalogEntryById } from "@/lib/bunny-storage";
+import {
+  getStreamPlaylistPath,
+  isBunnyStreamConfigured,
+} from "@/lib/bunny-stream";
+import {
+  signStreamAssetUrl,
+  isStreamTokenConfigured,
+} from "@/lib/bunny-sign";
+
+export type PlaybackFormat = "hls";
 
 export interface UpstreamStream {
-  /** Upstream URL (Bunny signed or external). Never send this to the browser. */
+  /** Upstream URL (Bunny signed). Never send this to the browser. */
   upstreamUrl: string;
   expiresAt: number;
-  kind: "protected" | "external";
+  kind: "protected";
   tokenProtected: boolean;
+  format: PlaybackFormat;
+  streamVideoId: string;
 }
 
-function isAbsoluteUrl(value: string): boolean {
-  return value.startsWith("http://") || value.startsWith("https://");
-}
-
-function isOurCdnUrl(url: string): boolean {
-  try {
-    const host = new URL(url).host;
-    const cdnHost = new URL(getBunnyCdnBase()).host;
-    return host === cdnHost;
-  } catch {
-    return false;
+/** Resolve upstream HLS URL (server-only). Stream-only — no Storage MP4. */
+export async function resolveUpstreamStream(
+  entry: CatalogEntry
+): Promise<UpstreamStream> {
+  if (!entry.streamVideoId || !isBunnyStreamConfigured()) {
+    throw new Error("Movie has no Bunny Stream source");
   }
-}
-
-/** Resolve upstream media URL (server-only). */
-export function resolveUpstreamStream(movie: Movie): UpstreamStream {
-  const bunnyPath = getBunnyPathForMovie(movie.id);
-  if (bunnyPath) {
-    const signed = signBunnyUrl(bunnyPath);
-    return {
-      upstreamUrl: signed.url,
-      expiresAt: signed.expiresAt,
-      kind: "protected",
-      tokenProtected: isBunnyTokenConfigured(),
-    };
-  }
-
-  const source = movie.videoUrl;
-  if (!source) {
-    throw new Error("Movie has no video source");
-  }
-
-  if (isAbsoluteUrl(source) && isOurCdnUrl(source)) {
-    const signed = signBunnyUrl(source);
-    return {
-      upstreamUrl: signed.url,
-      expiresAt: signed.expiresAt,
-      kind: "protected",
-      tokenProtected: isBunnyTokenConfigured(),
-    };
-  }
-
+  const path = getStreamPlaylistPath(entry.streamVideoId);
+  const signed = signStreamAssetUrl(path);
   return {
-    upstreamUrl: source,
-    expiresAt: 0,
-    kind: "external",
-    tokenProtected: false,
+    upstreamUrl: signed.url,
+    expiresAt: signed.expiresAt,
+    kind: "protected",
+    tokenProtected: isStreamTokenConfigured(),
+    format: "hls",
+    streamVideoId: entry.streamVideoId,
   };
 }
 
-export function resolveUpstreamStreamById(id: string): UpstreamStream | null {
-  const movie = getMovieById(id);
-  if (!movie) return null;
-  return resolveUpstreamStream(movie);
+export async function resolveUpstreamStreamById(
+  id: string
+): Promise<UpstreamStream | null> {
+  const entry = await getCatalogEntryById(id);
+  if (!entry?.streamVideoId) return null;
+  if (!isBunnyStreamConfigured()) return null;
+  return resolveUpstreamStream(entry);
 }
 
-/** Same-origin playback path for the player (no CDN hostname). */
-export function getPlaybackPath(movieId: string): string {
-  return `/api/media/${movieId}`;
+export async function resolveUpstreamAsset(
+  entry: CatalogEntry,
+  relativePath: string
+): Promise<UpstreamStream | null> {
+  if (!entry.streamVideoId || !isBunnyStreamConfigured()) return null;
+  const clean = relativePath.replace(/^\//, "");
+  const assetPath = `/${entry.streamVideoId}/${clean}`;
+  const signed = signStreamAssetUrl(assetPath);
+  return {
+    upstreamUrl: signed.url,
+    expiresAt: signed.expiresAt,
+    kind: "protected",
+    tokenProtected: isStreamTokenConfigured(),
+    format: "hls",
+    streamVideoId: entry.streamVideoId,
+  };
 }
+
+/** Same-origin HLS playlist path for the player (no CDN hostname). */
+export function getPlaybackPath(movieId: string): string {
+  return `/api/media/${movieId}/playlist.m3u8`;
+}
+
+export { getPublicMovieById, listPublicMovies } from "./catalog-public";

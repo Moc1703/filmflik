@@ -26,22 +26,24 @@ export default function KeyboardHelp({ open, onClose }: KeyboardHelpProps) {
   return (
     <div
       data-controls
-      className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm px-4"
+      className="absolute inset-0 z-50 flex items-center justify-center bg-background/88 backdrop-blur-sm px-4"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
       aria-label="Keyboard shortcuts"
     >
       <div
-        className="w-full max-w-md rounded-2xl bg-zinc-900/95 border border-white/10 shadow-2xl overflow-hidden"
+        className="w-full max-w-md bg-surface border border-line overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-5 py-4 border-b border-white/10">
-          <h3 className="text-white font-semibold text-lg">Keyboard shortcuts</h3>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-line">
+          <h3 className="ff-display text-foreground font-semibold text-lg tracking-tight">
+            Keyboard shortcuts
+          </h3>
           <button
             type="button"
             onClick={onClose}
-            className="text-white/50 hover:text-white text-sm px-2 py-1 rounded-lg hover:bg-white/10 transition"
+            className="text-muted hover:text-foreground text-sm px-2 py-1 hover:bg-foreground/5 transition-colors"
           >
             Esc
           </button>
@@ -52,8 +54,8 @@ export default function KeyboardHelp({ open, onClose }: KeyboardHelpProps) {
               key={row.keys}
               className="flex items-center justify-between gap-4 px-5 py-2.5 text-sm"
             >
-              <span className="text-white/70">{row.action}</span>
-              <kbd className="shrink-0 rounded-md bg-white/10 border border-white/10 px-2 py-1 text-white font-medium tabular-nums text-xs">
+              <span className="text-muted">{row.action}</span>
+              <kbd className="shrink-0 bg-foreground/5 border border-line px-2 py-1 text-foreground font-medium tabular-nums text-xs">
                 {row.keys}
               </kbd>
             </li>

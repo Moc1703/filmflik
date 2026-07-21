@@ -18,6 +18,11 @@ const nextConfig: NextConfig = {
         hostname: "filmflik.b-cdn.net",
         pathname: "/**",
       },
+      {
+        protocol: "https",
+        hostname: "**.b-cdn.net",
+        pathname: "/**",
+      },
     ],
   },
 };

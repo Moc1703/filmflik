@@ -1,15 +1,62 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { Play, Info, X } from "lucide-react";
-import { movies } from "@/lib/movies";
-import { useEffect, useState } from "react";
+import type { Movie } from "@/lib/movies";
+import { useEffect, useMemo, useState } from "react";
+import PosterImage from "@/components/PosterImage";
 
-export default function Hero() {
-  const featuredMovie =
-    movies.find((m) => m.genre === "Featured") ?? movies[0];
+interface HeroProps {
+  movies: Movie[];
+  loading?: boolean;
+}
+
+const ROTATE_MS = 7000;
+
+function buildSlides(movies: Movie[]): Movie[] {
+  if (movies.length === 0) return [];
+  const featured = movies.filter((m) => m.genre === "Featured");
+  const rest = movies.filter((m) => m.genre !== "Featured");
+  // Featured first, then the rest — always rotate across the catalog
+  const ordered = [...featured, ...rest];
+  const seen = new Set<string>();
+  const unique: Movie[] = [];
+  for (const movie of ordered) {
+    if (seen.has(movie.id)) continue;
+    seen.add(movie.id);
+    unique.push(movie);
+    if (unique.length >= 5) break;
+  }
+  return unique;
+}
+
+export default function Hero({ movies, loading }: HeroProps) {
+  const slides = useMemo(() => buildSlides(movies), [movies]);
+  const slideKey = slides.map((m) => m.id).join("|");
+
+  const [index, setIndex] = useState(0);
   const [showModal, setShowModal] = useState(false);
+
+  const featuredMovie = slides[index] ?? slides[0] ?? null;
+  const canRotate = slides.length > 1;
+
+  useEffect(() => {
+    setIndex(0);
+  }, [slideKey]);
+
+  useEffect(() => {
+    if (!canRotate || showModal) return;
+    if (
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    ) {
+      return;
+    }
+    const id = window.setInterval(() => {
+      setIndex((i) => (i + 1) % slides.length);
+    }, ROTATE_MS);
+    return () => window.clearInterval(id);
+  }, [canRotate, showModal, slides.length]);
 
   useEffect(() => {
     if (!showModal) return;
@@ -24,114 +71,185 @@ export default function Hero() {
     };
   }, [showModal]);
 
-  if (!featuredMovie) return null;
+  if (loading && !featuredMovie) {
+    return (
+      <section className="relative h-[100svh] min-h-[34rem] w-full overflow-hidden bg-background">
+        <div className="relative h-full mx-auto w-full max-w-7xl px-5 md:px-12 lg:px-16 flex flex-col justify-end pb-16 md:pb-24 pt-28">
+          <p className="ff-display text-[clamp(3.25rem,12vw,7.5rem)] leading-[0.88] font-extrabold tracking-tight text-foreground">
+            FILM<span className="text-brand">flik</span>
+          </p>
+          <p className="text-muted mt-6">Loading catalog…</p>
+        </div>
+      </section>
+    );
+  }
+
+  if (!featuredMovie) {
+    return (
+      <section className="relative h-[100svh] min-h-[34rem] w-full overflow-hidden bg-background">
+        <div className="relative h-full mx-auto w-full max-w-7xl px-5 md:px-12 lg:px-16 flex flex-col justify-end pb-16 md:pb-24 pt-28">
+          <p className="ff-display text-[clamp(3.25rem,12vw,7.5rem)] leading-[0.88] font-extrabold tracking-tight text-foreground">
+            FILM<span className="text-brand">flik</span>
+          </p>
+          <p className="text-muted mt-6 max-w-md leading-relaxed">
+            No titles released yet. Open /admin to pick videos from Bunny.
+          </p>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <>
-      <section className="relative h-[78vh] min-h-[28rem] w-full">
+      <section className="relative h-[100svh] min-h-[34rem] w-full overflow-hidden">
         <div className="absolute inset-0">
-          <Image
-            src={featuredMovie.thumbnail}
-            alt={featuredMovie.title}
-            fill
-            priority
-            className="object-cover"
-            sizes="100vw"
-          />
-          <div className="absolute inset-0 bg-gradient-to-r from-black via-black/70 to-black/20" />
-          <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent" />
+          {slides.map((movie, i) => (
+            <div
+              key={movie.id}
+              className={`absolute inset-0 transition-opacity duration-700 ease-out ${
+                i === index ? "opacity-100 z-[1]" : "opacity-0 z-0"
+              }`}
+              aria-hidden={i !== index}
+            >
+              <PosterImage
+                src={movie.thumbnail}
+                alt=""
+                fill
+                priority={i === 0}
+                sizes="100vw"
+                className={`object-cover ${i === index ? "ff-ken" : ""}`}
+              />
+            </div>
+          ))}
+          <div className="pointer-events-none absolute inset-0 z-[2] bg-[linear-gradient(105deg,rgba(11,13,18,0.92)_0%,rgba(11,13,18,0.55)_42%,rgba(11,13,18,0.25)_100%)]" />
+          <div className="pointer-events-none absolute inset-0 z-[2] bg-[linear-gradient(to_top,rgba(11,13,18)_0%,rgba(11,13,18,0.45)_38%,transparent_68%)]" />
         </div>
 
-        <div className="relative h-full flex flex-col justify-end md:justify-center px-4 md:px-12 lg:px-16 pb-16 md:pb-24 max-w-3xl pt-24">
-          <p className="text-brand text-xs font-semibold tracking-[0.22em] uppercase mb-3">
-            Featured
-          </p>
-          <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold text-white mb-4 tracking-tight text-balance">
-            {featuredMovie.title}
-          </h1>
-          <p className="text-base md:text-lg text-white/80 mb-3 max-w-xl line-clamp-3 leading-relaxed">
-            {featuredMovie.description}
-          </p>
-          <p className="text-white/45 text-sm mb-7">
-            {featuredMovie.year}
-            <span className="mx-2">·</span>
-            {featuredMovie.duration}
-            <span className="mx-2">·</span>
-            {featuredMovie.genre}
-          </p>
-          <div className="flex flex-wrap gap-3">
-            <Link
-              href={`/watch/${featuredMovie.id}`}
-              className="inline-flex items-center gap-2 bg-white text-black px-6 py-3 rounded-lg hover:bg-white/90 transition font-semibold"
-            >
-              <Play className="w-5 h-5" fill="currentColor" />
-              Play
-            </Link>
-            <button
-              type="button"
-              onClick={() => setShowModal(true)}
-              className="inline-flex items-center gap-2 bg-white/15 hover:bg-white/25 text-white px-6 py-3 rounded-lg transition font-semibold border border-white/10 backdrop-blur-sm"
-            >
-              <Info className="w-5 h-5" />
-              More Info
-            </button>
+        <div className="relative z-[3] h-full mx-auto w-full max-w-7xl px-5 md:px-12 lg:px-16 flex flex-col justify-end pb-16 md:pb-24 pt-28">
+          <div className="max-w-3xl" key={featuredMovie.id}>
+            <p className="ff-display ff-rise text-[clamp(3.25rem,12vw,7.5rem)] leading-[0.88] font-extrabold tracking-tight text-foreground">
+              FILM<span className="text-brand">flik</span>
+            </p>
+            <h1 className="ff-display ff-rise ff-rise-delay-1 mt-5 md:mt-7 text-2xl md:text-4xl font-semibold tracking-tight text-foreground text-balance">
+              {featuredMovie.title}
+            </h1>
+            <p className="ff-rise ff-rise-delay-2 mt-3 md:mt-4 text-base md:text-lg text-muted max-w-xl leading-relaxed line-clamp-3">
+              {featuredMovie.description}
+            </p>
+            <div className="ff-rise ff-rise-delay-3 mt-7 md:mt-8 flex flex-wrap gap-3">
+              <Link
+                href={`/watch/${featuredMovie.id}`}
+                className="inline-flex items-center gap-2 bg-brand text-[#1a1208] px-6 py-3.5 font-semibold tracking-wide hover:bg-[#efb56f] transition-colors"
+              >
+                <Play className="w-5 h-5" fill="currentColor" />
+                Watch now
+              </Link>
+              <button
+                type="button"
+                onClick={() => setShowModal(true)}
+                className="inline-flex items-center gap-2 border border-line bg-foreground/5 hover:bg-foreground/10 text-foreground px-6 py-3.5 font-semibold transition-colors backdrop-blur-sm"
+              >
+                <Info className="w-5 h-5" />
+                Details
+              </button>
+            </div>
+
+            {canRotate && (
+              <div
+                className="mt-8 flex items-center gap-2"
+                role="tablist"
+                aria-label="Featured titles"
+              >
+                {slides.map((movie, i) => (
+                  <button
+                    key={movie.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={i === index}
+                    aria-label={movie.title}
+                    onClick={() => setIndex(i)}
+                    className={`h-1 transition-all duration-300 ${
+                      i === index
+                        ? "w-8 bg-brand"
+                        : "w-4 bg-foreground/25 hover:bg-foreground/45"
+                    }`}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </section>
 
       {showModal && (
         <div
-          className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-6 bg-background/92 backdrop-blur-md ff-fade-in"
           onClick={() => setShowModal(false)}
           role="dialog"
           aria-modal="true"
-          aria-label={`${featuredMovie.title} details`}
+          aria-labelledby="details-title"
         >
           <div
-            className="bg-zinc-950 rounded-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto border border-white/10 shadow-2xl"
+            className="relative w-full max-w-5xl max-h-[92svh] overflow-y-auto bg-surface border-t sm:border border-line ff-rise"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="relative h-52 md:h-64">
-              <Image
-                src={featuredMovie.thumbnail}
-                alt={featuredMovie.title}
-                fill
-                className="object-cover rounded-t-2xl"
-                sizes="(max-width: 768px) 100vw, 768px"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 to-transparent" />
-              <button
-                type="button"
-                onClick={() => setShowModal(false)}
-                className="absolute top-4 right-4 bg-black/60 hover:bg-black/80 rounded-full p-2 transition border border-white/10"
-                aria-label="Close"
-              >
-                <X className="text-white w-5 h-5" />
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => setShowModal(false)}
+              className="absolute top-3 right-3 z-10 bg-background/80 hover:bg-background text-foreground p-2 border border-line transition-colors"
+              aria-label="Close"
+            >
+              <X className="w-5 h-5" />
+            </button>
 
-            <div className="p-6 md:p-8 -mt-8 relative">
-              <h2 className="text-white text-2xl md:text-4xl font-bold mb-3">
-                {featuredMovie.title}
-              </h2>
-              <div className="flex flex-wrap gap-3 text-white/55 text-sm mb-5 items-center">
-                <span>{featuredMovie.year}</span>
-                <span>{featuredMovie.duration}</span>
-                <span className="border border-white/25 px-1.5 py-0.5 text-xs rounded">
-                  HD
-                </span>
-                <span>{featuredMovie.genre}</span>
+            <div className="grid grid-cols-1 md:grid-cols-12">
+              <div className="md:col-span-6 relative aspect-[16/10] md:aspect-auto md:min-h-[28rem]">
+                <PosterImage
+                  src={featuredMovie.thumbnail}
+                  alt=""
+                  fill
+                  className="object-cover"
+                  sizes="(max-width: 768px) 100vw, 50vw"
+                />
               </div>
-              <p className="text-white/75 text-base md:text-lg mb-8 leading-relaxed">
-                {featuredMovie.description}
-              </p>
-              <Link
-                href={`/watch/${featuredMovie.id}`}
-                className="inline-flex items-center justify-center gap-2 bg-brand hover:bg-red-600 text-white px-8 py-3 rounded-lg font-semibold transition"
-              >
-                <Play className="w-5 h-5" fill="currentColor" />
-                Watch Now
-              </Link>
+
+              <div className="md:col-span-6 flex flex-col justify-center p-6 sm:p-8 md:p-10 lg:p-12">
+                <p className="text-brand text-xs font-semibold tracking-[0.2em] uppercase mb-3">
+                  Details
+                </p>
+                <h2
+                  id="details-title"
+                  className="ff-display text-foreground text-2xl sm:text-3xl md:text-4xl font-semibold tracking-tight text-balance pr-8"
+                >
+                  {featuredMovie.title}
+                </h2>
+                <p className="text-muted text-sm mt-4">
+                  {featuredMovie.year}
+                  <span className="mx-2 opacity-40">·</span>
+                  {featuredMovie.duration}
+                  <span className="mx-2 opacity-40">·</span>
+                  {featuredMovie.genre}
+                </p>
+                <p className="text-foreground/80 text-base md:text-lg mt-5 leading-relaxed">
+                  {featuredMovie.description}
+                </p>
+                <div className="mt-8 flex flex-wrap gap-3">
+                  <Link
+                    href={`/watch/${featuredMovie.id}`}
+                    className="inline-flex items-center justify-center gap-2 bg-brand hover:bg-[#efb56f] text-[#1a1208] px-6 py-3.5 font-semibold transition-colors"
+                  >
+                    <Play className="w-5 h-5" fill="currentColor" />
+                    Watch now
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => setShowModal(false)}
+                    className="inline-flex items-center justify-center border border-line bg-foreground/5 hover:bg-foreground/10 text-foreground px-6 py-3.5 font-semibold transition-colors"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
