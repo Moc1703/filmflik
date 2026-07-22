@@ -1,22 +1,44 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import {
   createServiceClient,
   hasServiceRole,
 } from "@/lib/supabase/admin";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
+import {
+  clientIp,
+  isSameOriginRequest,
+  rateLimit,
+} from "@/lib/request-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+// Max signups per IP per window (best-effort; CAPTCHA in Supabase is the hard gate).
+const SIGNUP_LIMIT = 5;
+const SIGNUP_WINDOW_MS = 60 * 60 * 1000;
 
 /**
  * Creates a confirmed user without sending Supabase auth emails
  * (avoids free-tier email rate limits).
  */
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   if (!isSupabaseConfigured() || !hasServiceRole()) {
     return NextResponse.json(
       { error: "Auth is not configured" },
       { status: 503 }
+    );
+  }
+
+  // Only accept same-origin browser submissions.
+  if (!isSameOriginRequest(request)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  // Throttle mass account creation per IP.
+  if (!rateLimit(`signup:${clientIp(request)}`, SIGNUP_LIMIT, SIGNUP_WINDOW_MS)) {
+    return NextResponse.json(
+      { error: "Too many sign-up attempts. Try again later." },
+      { status: 429 }
     );
   }
 
