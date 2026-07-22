@@ -13,6 +13,8 @@ export type MoodId =
 export interface Mood {
   id: MoodId;
   label: string;
+  /** Quiet accent — rendered small + muted in the UI. */
+  emoji: string;
   blurb: string;
   /** Genres that fit this mood (matched case-insensitively). */
   genres: string[];
@@ -22,36 +24,42 @@ export const MOODS: Mood[] = [
   {
     id: "chill",
     label: "Chill",
+    emoji: "☁",
     blurb: "Slow burn, soft nights, nothing that shouts.",
     genres: ["Drama", "Documentary", "Romance", "Music", "Biography"],
   },
   {
     id: "laugh",
     label: "Laugh",
+    emoji: "🙂",
     blurb: "Light, witty, or straight-up silly.",
     genres: ["Comedy", "Animation", "Family", "Musical"],
   },
   {
     id: "thrill",
     label: "Thrill",
+    emoji: "⚡",
     blurb: "Tension, twists, keep the lights on.",
     genres: ["Thriller", "Horror", "Crime", "Mystery", "Film-Noir"],
   },
   {
     id: "escape",
     label: "Escape",
+    emoji: "✦",
     blurb: "Other worlds, big journeys, wonder.",
     genres: ["Fantasy", "Adventure", "Sci-Fi", "Animation", "Western"],
   },
   {
     id: "feel",
     label: "Feel something",
+    emoji: "♡",
     blurb: "Stories that land in the chest.",
     genres: ["Drama", "Romance", "Biography", "War", "History", "Music"],
   },
   {
     id: "amped",
     label: "Amped",
+    emoji: "▲",
     blurb: "Pulse up — chase, fight, win.",
     genres: ["Action", "Superhero", "Sport", "Adventure", "War"],
   },

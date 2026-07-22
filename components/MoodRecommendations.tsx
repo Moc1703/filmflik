@@ -54,12 +54,20 @@ export default function MoodRecommendations({
               role="tab"
               aria-selected={active}
               onClick={() => setMoodId(active ? null : m.id)}
-              className={`relative px-3 py-2.5 text-sm font-semibold tracking-tight transition-colors ${
+              className={`relative inline-flex items-center gap-1.5 px-3 py-2.5 text-sm font-semibold tracking-tight transition-colors ${
                 active
                   ? "text-brand"
                   : "text-foreground/55 hover:text-foreground"
               }`}
             >
+              <span
+                className={`text-[0.95em] leading-none transition-opacity ${
+                  active ? "opacity-80" : "opacity-45"
+                }`}
+                aria-hidden
+              >
+                {m.emoji}
+              </span>
               {m.label}
               {active && (
                 <span
