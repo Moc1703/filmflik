@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCatalogEntryById } from "@/lib/bunny-storage";
 import { getStreamCdnBase } from "@/lib/bunny-stream";
 import { signBunnyDirectoryUrl, signStreamAssetUrl } from "@/lib/bunny-sign";
-import { assertPlaybackAccess } from "@/lib/playback-auth";
+import {
+  assertFullPlaybackAccess,
+  assertPreviewAccess,
+} from "@/lib/playback-auth";
 import {
   getPlaybackPath,
   resolveUpstreamAsset,
@@ -190,15 +193,21 @@ async function proxyUpstream(
  * Master playlist is proxied & rewritten to CDN; segments hit Stream CDN directly.
  * Stream preview assets (preview.webp / play_*p.mp4) are proxied when needed.
  */
+function isPreviewPath(subpath: string): boolean {
+  return subpath === "preview.mp4" || subpath === "preview.webp";
+}
+
 export async function GET(
   request: NextRequest,
   context: { params: Promise<{ id: string; path?: string[] }> }
 ) {
-  const denied = assertPlaybackAccess(request);
-  if (denied) return denied;
-
   const { id, path: pathParts } = await context.params;
   const subpath = (pathParts || []).map(decodeURIComponent).join("/");
+
+  const denied = isPreviewPath(subpath)
+    ? assertPreviewAccess(request)
+    : await assertFullPlaybackAccess(request);
+  if (denied) return denied;
 
   try {
     if (!subpath) {
@@ -267,11 +276,13 @@ export async function HEAD(
   request: NextRequest,
   context: { params: Promise<{ id: string; path?: string[] }> }
 ) {
-  const denied = assertPlaybackAccess(request);
-  if (denied) return denied;
-
   const { id, path: pathParts } = await context.params;
   const subpath = (pathParts || []).map(decodeURIComponent).join("/");
+
+  const denied = isPreviewPath(subpath)
+    ? assertPreviewAccess(request)
+    : await assertFullPlaybackAccess(request);
+  if (denied) return denied;
 
   try {
     let upstreamUrl: string | null = null;

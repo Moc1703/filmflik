@@ -29,6 +29,7 @@ import {
   patchPlayerPrefs,
   saveWatchProgress,
 } from "@/lib/player-storage";
+import { saveServerProgress } from "@/lib/progress-sync";
 import {
   applyAutoLevelCap,
   getPreviewAbrHint,
@@ -173,6 +174,7 @@ export default function VideoPlayer({
       if (progressSaveRef.current) clearTimeout(progressSaveRef.current);
       progressSaveRef.current = setTimeout(() => {
         saveWatchProgress(movieId, time, dur);
+        void saveServerProgress(movieId, time, dur);
       }, 800);
     },
     [movieId]
@@ -526,6 +528,7 @@ export default function VideoPlayer({
       clearHideTimer();
       if (movieId && Number.isFinite(video.currentTime)) {
         saveWatchProgress(movieId, video.currentTime, video.duration || 0);
+        void saveServerProgress(movieId, video.currentTime, video.duration || 0);
       }
       if (
         pauseInfoEnabled &&
@@ -625,6 +628,7 @@ export default function VideoPlayer({
       if (progressSaveRef.current) clearTimeout(progressSaveRef.current);
       if (movieId && Number.isFinite(video.currentTime)) {
         saveWatchProgress(movieId, video.currentTime, video.duration || 0);
+        void saveServerProgress(movieId, video.currentTime, video.duration || 0);
       }
     };
   }, [

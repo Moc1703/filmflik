@@ -5,6 +5,7 @@ import { ChevronLeft, ChevronRight, Play, Info, X } from "lucide-react";
 import type { Movie } from "@/lib/movies";
 import { useEffect, useMemo, useState } from "react";
 import PosterImage from "@/components/PosterImage";
+import WatchlistButton from "@/components/WatchlistButton";
 
 interface HeroProps {
   movies: Movie[];
@@ -296,6 +297,7 @@ export default function Hero({ movies, loading }: HeroProps) {
                     <Play className="w-5 h-5" fill="currentColor" />
                     Watch now
                   </Link>
+                  <WatchlistButton movieId={featuredMovie.id} />
                   <button
                     type="button"
                     onClick={() => setShowModal(false)}

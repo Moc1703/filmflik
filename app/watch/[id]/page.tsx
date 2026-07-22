@@ -7,12 +7,17 @@ import {
   getWatchProgress,
   type WatchProgress,
 } from "@/lib/player-storage";
+import {
+  deleteServerProgress,
+  fetchServerProgress,
+} from "@/lib/progress-sync";
 import { ArrowLeft, Loader2, Play, RotateCcw } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import PosterImage from "@/components/PosterImage";
 import VideoPlayer from "@/components/player/VideoPlayer";
 import EndRecommendations from "@/components/player/EndRecommendations";
+import WatchlistButton from "@/components/WatchlistButton";
 import { useCatalog, useMovie } from "@/lib/use-catalog";
 import { pickRecommendations } from "@/lib/recommendations";
 import { resolveThumbnail } from "@/lib/thumbnail";
@@ -43,6 +48,18 @@ export default function WatchPage() {
     setStartAt(0);
     setResolveError(null);
     setSavedProgress(getWatchProgress(movieId));
+
+    let cancelled = false;
+    void fetchServerProgress(movieId).then((server) => {
+      if (cancelled || !server) return;
+      setSavedProgress((local) => {
+        if (!local) return server;
+        return server.updatedAt >= local.updatedAt ? server : local;
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [movieId]);
 
   useEffect(() => {
@@ -124,6 +141,10 @@ export default function WatchPage() {
         url?: string;
         error?: string;
       };
+      if (res.status === 401) {
+        router.push(`/login?next=${encodeURIComponent(`/watch/${movie.id}`)}`);
+        return;
+      }
       if (!res.ok || !data.url) {
         throw new Error(data.error || "Could not get playback URL");
       }
@@ -141,6 +162,7 @@ export default function WatchPage() {
 
   const playFromStart = () => {
     clearWatchProgress(movieId);
+    void deleteServerProgress(movieId);
     setSavedProgress(null);
     void playFrom(0);
   };
@@ -213,7 +235,7 @@ export default function WatchPage() {
                   )}
 
                   {savedProgress ? (
-                    <div className="mt-8 max-w-md">
+                    <div className="mt-8 max-w-lg">
                       <p className="text-muted text-sm mb-2">
                         Left off at{" "}
                         <span className="text-foreground tabular-nums font-medium">
@@ -234,7 +256,7 @@ export default function WatchPage() {
                           />
                         </div>
                       )}
-                      <div className="flex flex-col sm:flex-row gap-3">
+                      <div className="flex flex-col sm:flex-row flex-wrap gap-3">
                         <button
                           type="button"
                           disabled={resolving}
@@ -257,10 +279,11 @@ export default function WatchPage() {
                           <RotateCcw className="w-4 h-4" />
                           Start over
                         </button>
+                        <WatchlistButton movieId={movie.id} />
                       </div>
                     </div>
                   ) : (
-                    <div className="mt-8">
+                    <div className="mt-8 flex flex-col sm:flex-row gap-3">
                       <button
                         type="button"
                         disabled={resolving}
@@ -274,6 +297,7 @@ export default function WatchPage() {
                         )}
                         {resolving ? "Preparing…" : "Watch now"}
                       </button>
+                      <WatchlistButton movieId={movie.id} />
                     </div>
                   )}
                 </div>

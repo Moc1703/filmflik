@@ -7,6 +7,8 @@ import type { Movie } from "@/lib/movies";
 import { useRouter } from "next/navigation";
 import PosterImage from "@/components/PosterImage";
 import { filterMovies, searchHref } from "@/lib/search";
+import AuthNavMenu from "@/components/AuthNavMenu";
+import { isSupabaseConfigured } from "@/lib/supabase/env";
 
 interface NavbarProps {
   movies?: Movie[];
@@ -110,18 +112,26 @@ export default function Navbar({ movies = [] }: NavbarProps) {
               <Link href="/categories" className={navLinkClass}>
                 Categories
               </Link>
+              {isSupabaseConfigured() && (
+                <Link href="/my-list" className={navLinkClass}>
+                  My List
+                </Link>
+              )}
             </div>
           </div>
 
-          <button
-            type="button"
-            className="ff-icon-btn"
-            onClick={() => setShowSearch(true)}
-            aria-label="Search"
-            aria-expanded={showSearch}
-          >
-            <Search className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-3 md:gap-4">
+            <button
+              type="button"
+              className="ff-icon-btn"
+              onClick={() => setShowSearch(true)}
+              aria-label="Search"
+              aria-expanded={showSearch}
+            >
+              <Search className="w-5 h-5" />
+            </button>
+            <AuthNavMenu />
+          </div>
         </div>
       </nav>
 

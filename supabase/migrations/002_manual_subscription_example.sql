@@ -1,0 +1,12 @@
+-- Optional: grant a manual trial/active subscription for a user.
+-- Replace USER_UUID and run in Supabase SQL editor when testing REQUIRE_SUBSCRIPTION=true.
+
+-- insert into public.subscriptions (
+--   user_id, status, plan_id, current_period_end, provider
+-- ) values (
+--   'USER_UUID',
+--   'trialing',
+--   'manual_trial',
+--   now() + interval '30 days',
+--   'manual'
+-- );

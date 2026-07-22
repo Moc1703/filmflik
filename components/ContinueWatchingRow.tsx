@@ -1,13 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { Movie } from "@/lib/movies";
 import {
   clearWatchProgress,
   getAllWatchProgress,
   type WatchProgress,
 } from "@/lib/player-storage";
+import { deleteServerProgress } from "@/lib/progress-sync";
+import { isSupabaseConfigured } from "@/lib/supabase/env";
+import { createClient } from "@/lib/supabase/client";
 import { Play, X } from "lucide-react";
 import PosterImage from "@/components/PosterImage";
 
@@ -27,24 +30,64 @@ export default function ContinueWatchingRow({
 }: ContinueWatchingRowProps) {
   const [items, setItems] = useState<ContinueItem[]>([]);
 
-  const refresh = () => {
-    const entries = getAllWatchProgress();
+  const refresh = useCallback(async () => {
     const next: ContinueItem[] = [];
+
+    if (isSupabaseConfigured()) {
+      try {
+        const supabase = createClient();
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+
+        if (user) {
+          const res = await fetch("/api/me/progress", { cache: "no-store" });
+          if (res.ok) {
+            const data = (await res.json()) as {
+              items?: Array<{
+                movieId: string;
+                positionSeconds: number;
+                durationSeconds: number;
+                updatedAt: string;
+              }>;
+            };
+            for (const entry of data.items || []) {
+              const movie = movies.find((m) => m.id === entry.movieId);
+              if (!movie) continue;
+              next.push({
+                movie,
+                progress: {
+                  time: entry.positionSeconds,
+                  duration: entry.durationSeconds,
+                  updatedAt: new Date(entry.updatedAt).getTime(),
+                },
+              });
+              if (next.length >= MAX_ITEMS) break;
+            }
+            setItems(next);
+            return;
+          }
+        }
+      } catch {
+        // fall through to local
+      }
+    }
+
+    const entries = getAllWatchProgress();
     for (const entry of entries) {
       const movie = movies.find((m) => m.id === entry.movieId);
       if (movie) next.push({ movie, progress: entry.progress });
       if (next.length >= MAX_ITEMS) break;
     }
     setItems(next);
-  };
+  }, [movies]);
 
   useEffect(() => {
-    refresh();
-    const onFocus = () => refresh();
+    void refresh();
+    const onFocus = () => void refresh();
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [movies]);
+  }, [refresh]);
 
   if (items.length === 0) return null;
 
@@ -105,7 +148,7 @@ export default function ContinueWatchingRow({
                 onClick={(e) => {
                   e.preventDefault();
                   clearWatchProgress(movie.id);
-                  refresh();
+                  void deleteServerProgress(movie.id).then(() => refresh());
                 }}
               >
                 <X className="w-3 h-3" />

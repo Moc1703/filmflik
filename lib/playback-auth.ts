@@ -3,6 +3,7 @@ import "server-only";
 import { createHmac, timingSafeEqual } from "crypto";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { resolveWatchAccess } from "@/lib/entitlements";
 
 export const PLAYBACK_COOKIE = "ff_playback";
 const DEFAULT_TTL_SEC = 2 * 60 * 60;
@@ -107,8 +108,6 @@ export function isPlaybackRefererAllowed(request: NextRequest): boolean {
 
 export function hasValidPlaybackSession(request: NextRequest): boolean {
   if (!playbackSecret()) {
-    // Misconfigured — fail closed for media once password/secret should exist.
-    // Dev without ADMIN_PASSWORD: allow (local convenience).
     return process.env.NODE_ENV !== "production";
   }
   return verifyPlaybackSessionToken(
@@ -116,7 +115,65 @@ export function hasValidPlaybackSession(request: NextRequest): boolean {
   );
 }
 
-export function assertPlaybackAccess(
+function accessDeniedResponse(
+  reason: "unauthenticated" | "no_subscription" | "misconfigured"
+): NextResponse {
+  if (reason === "no_subscription") {
+    return NextResponse.json(
+      { error: "Active subscription required" },
+      { status: 402 }
+    );
+  }
+  if (reason === "misconfigured") {
+    return NextResponse.json(
+      { error: "Auth is not configured" },
+      { status: 503 }
+    );
+  }
+  return NextResponse.json(
+    { error: "Sign in required to watch" },
+    { status: 401 }
+  );
+}
+
+/**
+ * Full playback (HLS playlist / segments): referer + user entitlement.
+ * Also requires a valid playback cookie when a secret is configured.
+ */
+export async function assertFullPlaybackAccess(
+  request: NextRequest
+): Promise<NextResponse | null> {
+  if (!isPlaybackRefererAllowed(request)) {
+    return NextResponse.json(
+      { error: "Playback blocked — invalid referer" },
+      { status: 403 }
+    );
+  }
+
+  const access = await resolveWatchAccess();
+  if (!access.ok) {
+    return accessDeniedResponse(access.reason);
+  }
+
+  if (!hasValidPlaybackSession(request)) {
+    // Logged-in users without cookie yet — stream route should have set it.
+    // Allow when secret missing in dev.
+    if (playbackSecret() && process.env.NODE_ENV === "production") {
+      return NextResponse.json(
+        { error: "Playback session required" },
+        { status: 401 }
+      );
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Lightweight previews (hover/billboard): referer + anonymous playback cookie.
+ * Does not require a signed-in user so browsing stays public.
+ */
+export function assertPreviewAccess(
   request: NextRequest
 ): NextResponse | null {
   if (!isPlaybackRefererAllowed(request)) {
@@ -134,6 +191,13 @@ export function assertPlaybackAccess(
   return null;
 }
 
+/** @deprecated Prefer assertFullPlaybackAccess / assertPreviewAccess */
+export function assertPlaybackAccess(
+  request: NextRequest
+): NextResponse | null {
+  return assertPreviewAccess(request);
+}
+
 export function attachPlaybackCookie(res: NextResponse): NextResponse {
   const token = createPlaybackSessionToken();
   if (!token) return res;
@@ -146,3 +210,5 @@ export function attachPlaybackCookie(res: NextResponse): NextResponse {
   });
   return res;
 }
+
+export { accessDeniedResponse };
