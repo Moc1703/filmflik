@@ -1,5 +1,7 @@
 import "server-only";
 
+import { createHash } from "crypto";
+
 export interface StreamVideo {
   guid: string;
   title: string;
@@ -133,4 +135,67 @@ export function formatStreamDuration(seconds: number): string {
     return `${h}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
   }
   return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+/** Create an empty Stream video object (required before TUS upload). */
+export async function createStreamVideo(title: string): Promise<{
+  videoId: string;
+  libraryId: string;
+}> {
+  const { libraryId, apiKey } = getStreamConfig();
+  const cleanTitle = title.trim() || "Untitled upload";
+
+  const res = await fetch(
+    `https://video.bunnycdn.com/library/${libraryId}/videos`,
+    {
+      method: "POST",
+      headers: {
+        AccessKey: apiKey,
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ title: cleanTitle }),
+      cache: "no-store",
+    }
+  );
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(
+      `Failed to create Stream video (${res.status}): ${text || res.statusText}`
+    );
+  }
+
+  const data = (await res.json()) as { guid?: string };
+  if (!data.guid) {
+    throw new Error("Stream create video response missing guid");
+  }
+  return { videoId: data.guid, libraryId };
+}
+
+/**
+ * Presigned TUS credentials for direct browser → Bunny upload.
+ * Signature = SHA256(libraryId + apiKey + expirationTime + videoId)
+ */
+export function createTusUploadAuth(videoId: string, ttlSeconds = 6 * 60 * 60): {
+  libraryId: string;
+  videoId: string;
+  authorizationSignature: string;
+  authorizationExpire: number;
+  endpoint: string;
+} {
+  const { libraryId, apiKey } = getStreamConfig();
+  const authorizationExpire =
+    Math.floor(Date.now() / 1000) + Math.max(300, ttlSeconds);
+  const authorizationSignature = createHash("sha256")
+    .update(`${libraryId}${apiKey}${authorizationExpire}${videoId}`)
+    .digest("hex");
+
+  return {
+    libraryId,
+    videoId,
+    authorizationSignature,
+    authorizationExpire,
+    endpoint: "https://video.bunnycdn.com/tusupload",
+  };
 }

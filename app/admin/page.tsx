@@ -7,6 +7,7 @@ import { DEFAULT_THUMBNAIL } from "@/lib/thumbnail";
 import { CATEGORY_PRESETS } from "@/lib/categories";
 import { ImagePlus, Loader2, LogOut, RefreshCw, Search, Trash2, X } from "lucide-react";
 import PosterImage from "@/components/PosterImage";
+import AdminStreamUpload from "@/components/AdminStreamUpload";
 
 interface AdminBunnyItem {
   path: string;
@@ -463,14 +464,29 @@ export default function AdminPage() {
         {!configured && !loading && (
           <div className="border border-line px-5 py-8 text-sm text-muted leading-relaxed mb-6">
             <p className="text-foreground font-medium mb-2">
-              Storage env missing
+              Stream env missing
             </p>
             <p>
               Configure Bunny Stream (<code className="text-foreground/80">BUNNY_STREAM_*</code>)
-              or Storage in <code className="text-foreground/80">.env.local</code>, then
-              restart.
+              in <code className="text-foreground/80">.env.local</code>, then restart.
+              Storage is still used for catalog.json and thumbnails.
             </p>
           </div>
+        )}
+
+        {configured && (
+          <AdminStreamUpload
+            disabled={loading || saving}
+            onUploaded={({ videoId, title }) => {
+              setStatus(
+                `Uploaded “${title}” to Stream. Encoding may take a minute — refresh if it doesn’t appear yet.`
+              );
+              void (async () => {
+                await load({ keepStatus: true });
+                setSelectedPath(`stream:${videoId}`);
+              })();
+            }}
+          />
         )}
 
         {configured && (
