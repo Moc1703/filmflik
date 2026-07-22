@@ -1,20 +1,37 @@
 import type { Movie } from "@/lib/movies";
 
-/** Suggested labels for admin — free text still allowed. */
+/**
+ * Full genre list for admin dropdown.
+ * "Featured" is special — used for homepage hero rotation.
+ */
 export const CATEGORY_PRESETS = [
   "Featured",
   "Action",
   "Adventure",
   "Animation",
+  "Biography",
   "Comedy",
+  "Crime",
   "Documentary",
   "Drama",
+  "Family",
+  "Fantasy",
+  "Film-Noir",
+  "History",
   "Horror",
   "Music",
+  "Musical",
+  "Mystery",
   "Romance",
   "Sci-Fi",
+  "Sport",
+  "Superhero",
   "Thriller",
+  "War",
+  "Western",
 ] as const;
+
+export type CategoryPreset = (typeof CATEGORY_PRESETS)[number];
 
 export function normalizeCategory(value: string): string {
   return value.trim().replace(/\s+/g, " ");

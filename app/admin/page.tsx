@@ -724,20 +724,25 @@ export default function AdminPage() {
               <div className="grid grid-cols-2 gap-3">
                 <label className="block text-xs text-muted">
                   Category
-                  <input
-                    list="ff-category-presets"
-                    value={selected.genre}
+                  <select
+                    value={selected.genre || "Featured"}
                     onChange={(e) =>
                       updateDraft(selectedPath!, { genre: e.target.value })
                     }
                     className={fieldClass}
-                    placeholder="e.g. Drama, Music…"
-                  />
-                  <datalist id="ff-category-presets">
+                  >
+                    {!CATEGORY_PRESETS.includes(
+                      selected.genre as (typeof CATEGORY_PRESETS)[number]
+                    ) &&
+                      Boolean(selected.genre) && (
+                        <option value={selected.genre}>{selected.genre}</option>
+                      )}
                     {CATEGORY_PRESETS.map((name) => (
-                      <option key={name} value={name} />
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
                     ))}
-                  </datalist>
+                  </select>
                 </label>
                 <label className="block text-xs text-muted">
                   Year
