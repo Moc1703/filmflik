@@ -35,7 +35,6 @@ export default function Hero({ movies, loading }: HeroProps) {
 
   const [index, setIndex] = useState(0);
   const [showModal, setShowModal] = useState(false);
-  const [paused, setPaused] = useState(false);
 
   const featuredMovie = slides[index] ?? slides[0] ?? null;
   const canRotate = slides.length > 1;
@@ -55,7 +54,7 @@ export default function Hero({ movies, loading }: HeroProps) {
   }, [slideKey]);
 
   useEffect(() => {
-    if (!canRotate || showModal || paused) return;
+    if (!canRotate || showModal) return;
     if (
       typeof window !== "undefined" &&
       window.matchMedia("(prefers-reduced-motion: reduce)").matches
@@ -66,7 +65,7 @@ export default function Hero({ movies, loading }: HeroProps) {
       setIndex((i) => (i + 1) % slides.length);
     }, ROTATE_MS);
     return () => window.clearInterval(id);
-  }, [canRotate, paused, showModal, slides.length]);
+  }, [canRotate, showModal, slides.length]);
 
   useEffect(() => {
     if (!showModal) return;
@@ -136,11 +135,7 @@ export default function Hero({ movies, loading }: HeroProps) {
 
   return (
     <>
-      <section
-        className="relative h-[100svh] min-h-[34rem] w-full overflow-hidden"
-        onMouseEnter={() => setPaused(true)}
-        onMouseLeave={() => setPaused(false)}
-      >
+      <section className="relative h-[100svh] min-h-[34rem] w-full overflow-hidden">
         <div className="absolute inset-0">
           {slides.map((movie, i) => (
             <div
