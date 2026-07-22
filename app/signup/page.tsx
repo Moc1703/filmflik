@@ -21,7 +21,6 @@ function SignupForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [info, setInfo] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   if (!isSupabaseConfigured()) {
@@ -46,30 +45,30 @@ function SignupForm() {
     e.preventDefault();
     setLoading(true);
     setError(null);
-    setInfo(null);
     try {
-      const supabase = createClient();
-      const { data, error: err } = await supabase.auth.signUp({
-        email: email.trim(),
-        password,
-        options: {
-          data: {
-            display_name: displayName.trim() || undefined,
-          },
-          emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
-        },
+      const res = await fetch("/api/auth/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: email.trim(),
+          password,
+          displayName: displayName.trim() || undefined,
+        }),
       });
-      if (err) throw err;
-
-      if (data.session) {
-        router.replace(next);
-        router.refresh();
-        return;
+      const data = (await res.json()) as { error?: string };
+      if (!res.ok) {
+        throw new Error(data.error || "Sign up failed");
       }
 
-      setInfo(
-        "Account created. Check your email to confirm, then sign in."
-      );
+      const supabase = createClient();
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
+      if (signInError) throw signInError;
+
+      router.replace(next);
+      router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign up failed");
     } finally {
@@ -132,11 +131,6 @@ function SignupForm() {
           {error && (
             <p className="text-[#e07a6a] text-sm border border-[#e07a6a]/30 bg-[#e07a6a]/10 px-3 py-2">
               {error}
-            </p>
-          )}
-          {info && (
-            <p className="text-brand text-sm border border-brand/30 bg-brand/10 px-3 py-2">
-              {info}
             </p>
           )}
 
