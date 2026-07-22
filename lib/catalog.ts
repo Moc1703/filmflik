@@ -106,7 +106,9 @@ export function normalizeCatalogEntry(input: unknown): CatalogEntry | null {
         ? m.year
         : new Date().getFullYear(),
     subtitleUrl:
-      typeof m.subtitleUrl === "string" ? m.subtitleUrl : undefined,
+      typeof m.subtitleUrl === "string" && m.subtitleUrl.trim()
+        ? m.subtitleUrl.trim()
+        : undefined,
     released: typeof m.released === "boolean" ? m.released : true,
     addedAt:
       typeof m.addedAt === "number" &&

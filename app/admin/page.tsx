@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CatalogEntry } from "@/lib/catalog";
 import { DEFAULT_THUMBNAIL } from "@/lib/thumbnail";
 import { CATEGORY_PRESETS } from "@/lib/categories";
-import { ImagePlus, Loader2, LogOut, RefreshCw, Search, Trash2, X } from "lucide-react";
+import { Captions, ImagePlus, Loader2, LogOut, RefreshCw, Search, Trash2, X } from "lucide-react";
 import PosterImage from "@/components/PosterImage";
 import AdminStreamUpload from "@/components/AdminStreamUpload";
 
@@ -92,7 +92,7 @@ function toCatalogPayload(
     duration: d.duration,
     genre: d.genre,
     year: d.year,
-    subtitleUrl: d.subtitleUrl,
+    subtitleUrl: d.subtitleUrl?.trim() || undefined,
     streamVideoId: streamVideoId.trim(),
     released: Boolean(d.released),
     addedAt: d.addedAt ?? file?.entry?.addedAt,
@@ -115,8 +115,10 @@ export default function AdminPage() {
   const [filter, setFilter] = useState<FilterTab>("all");
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [uploadingThumb, setUploadingThumb] = useState(false);
+  const [uploadingSub, setUploadingSub] = useState(false);
   const [removing, setRemoving] = useState(false);
   const thumbInputRef = useRef<HTMLInputElement>(null);
+  const subInputRef = useRef<HTMLInputElement>(null);
   const draftsRef = useRef<DraftMap>({});
   const baselineRef = useRef<DraftMap>({});
   const catalogPathsRef = useRef<Set<string>>(new Set());
@@ -265,6 +267,33 @@ export default function AdminPage() {
     } finally {
       setUploadingThumb(false);
       if (thumbInputRef.current) thumbInputRef.current.value = "";
+    }
+  };
+
+  const uploadSubtitle = async (path: string, file: File) => {
+    setUploadingSub(true);
+    setError(null);
+    setStatus(null);
+    try {
+      const draft = draftsRef.current[path];
+      const body = new FormData();
+      body.set("file", file);
+      body.set("movieId", draft?.id || path);
+      const res = await fetch("/api/admin/subtitle", {
+        method: "POST",
+        body,
+      });
+      const data = (await res.json()) as { url?: string; error?: string };
+      if (!res.ok || !data.url) {
+        throw new Error(data.error || "Subtitle upload failed");
+      }
+      updateDraft(path, { subtitleUrl: data.url });
+      setStatus("Subtitle uploaded — click Save to publish");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Subtitle upload failed");
+    } finally {
+      setUploadingSub(false);
+      if (subInputRef.current) subInputRef.current.value = "";
     }
   };
 
@@ -819,6 +848,71 @@ export default function AdminPage() {
                     }
                     className={fieldClass}
                     placeholder="https://… or /api/thumbnails/…"
+                  />
+                </label>
+              </div>
+              <div className="space-y-2">
+                <p className="text-xs text-muted">Subtitles</p>
+                <p className="text-[11px] text-muted/80 leading-relaxed">
+                  Upload <span className="text-foreground/70">.vtt</span> or{" "}
+                  <span className="text-foreground/70">.srt</span> (SRT is
+                  converted to WebVTT automatically).
+                </p>
+                {selected.subtitleUrl ? (
+                  <p className="text-xs text-brand truncate" title={selected.subtitleUrl}>
+                    Attached: {selected.subtitleUrl}
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted">No subtitle file yet.</p>
+                )}
+                <div className="flex flex-wrap gap-2">
+                  <input
+                    ref={subInputRef}
+                    type="file"
+                    accept=".vtt,.srt,text/vtt,application/x-subrip,text/plain"
+                    className="sr-only"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file && selectedPath) {
+                        void uploadSubtitle(selectedPath, file);
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    disabled={uploadingSub || !configured}
+                    onClick={() => subInputRef.current?.click()}
+                    className="inline-flex items-center gap-2 border border-line bg-foreground/5 hover:bg-foreground/10 disabled:opacity-40 text-foreground px-3 py-2 text-xs font-semibold transition-colors"
+                  >
+                    {uploadingSub ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Captions className="w-3.5 h-3.5" />
+                    )}
+                    {uploadingSub ? "Uploading…" : "Upload subtitle"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={uploadingSub || !selected.subtitleUrl}
+                    onClick={() =>
+                      updateDraft(selectedPath!, { subtitleUrl: "" })
+                    }
+                    className="border border-line bg-foreground/5 hover:bg-foreground/10 disabled:opacity-40 text-muted px-3 py-2 text-xs font-semibold transition-colors"
+                  >
+                    Remove
+                  </button>
+                </div>
+                <label className="block text-xs text-muted">
+                  Or paste URL
+                  <input
+                    value={selected.subtitleUrl || ""}
+                    onChange={(e) =>
+                      updateDraft(selectedPath!, {
+                        subtitleUrl: e.target.value,
+                      })
+                    }
+                    className={fieldClass}
+                    placeholder="https://… or /api/subtitles/…"
                   />
                 </label>
               </div>
