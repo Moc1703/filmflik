@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Play, Info, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Play, Info, X } from "lucide-react";
 import type { Movie } from "@/lib/movies";
 import { useEffect, useMemo, useState } from "react";
 import PosterImage from "@/components/PosterImage";
@@ -17,7 +17,6 @@ function buildSlides(movies: Movie[]): Movie[] {
   if (movies.length === 0) return [];
   const featured = movies.filter((m) => m.genre === "Featured");
   const rest = movies.filter((m) => m.genre !== "Featured");
-  // Featured first, then the rest — always rotate across the catalog
   const ordered = [...featured, ...rest];
   const seen = new Set<string>();
   const unique: Movie[] = [];
@@ -36,16 +35,27 @@ export default function Hero({ movies, loading }: HeroProps) {
 
   const [index, setIndex] = useState(0);
   const [showModal, setShowModal] = useState(false);
+  const [paused, setPaused] = useState(false);
 
   const featuredMovie = slides[index] ?? slides[0] ?? null;
   const canRotate = slides.length > 1;
+
+  const goPrev = () => {
+    if (!canRotate) return;
+    setIndex((i) => (i - 1 + slides.length) % slides.length);
+  };
+
+  const goNext = () => {
+    if (!canRotate) return;
+    setIndex((i) => (i + 1) % slides.length);
+  };
 
   useEffect(() => {
     setIndex(0);
   }, [slideKey]);
 
   useEffect(() => {
-    if (!canRotate || showModal) return;
+    if (!canRotate || showModal || paused) return;
     if (
       typeof window !== "undefined" &&
       window.matchMedia("(prefers-reduced-motion: reduce)").matches
@@ -56,7 +66,7 @@ export default function Hero({ movies, loading }: HeroProps) {
       setIndex((i) => (i + 1) % slides.length);
     }, ROTATE_MS);
     return () => window.clearInterval(id);
-  }, [canRotate, showModal, slides.length]);
+  }, [canRotate, paused, showModal, slides.length]);
 
   useEffect(() => {
     if (!showModal) return;
@@ -70,6 +80,31 @@ export default function Hero({ movies, loading }: HeroProps) {
       window.removeEventListener("keydown", onKey);
     };
   }, [showModal]);
+
+  useEffect(() => {
+    if (!canRotate || showModal) return;
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (
+        t &&
+        (t.tagName === "INPUT" ||
+          t.tagName === "TEXTAREA" ||
+          t.isContentEditable)
+      ) {
+        return;
+      }
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        setIndex((i) => (i - 1 + slides.length) % slides.length);
+      }
+      if (e.key === "ArrowRight") {
+        e.preventDefault();
+        setIndex((i) => (i + 1) % slides.length);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [canRotate, showModal, slides.length]);
 
   if (loading && !featuredMovie) {
     return (
@@ -101,7 +136,11 @@ export default function Hero({ movies, loading }: HeroProps) {
 
   return (
     <>
-      <section className="relative h-[100svh] min-h-[34rem] w-full overflow-hidden">
+      <section
+        className="relative h-[100svh] min-h-[34rem] w-full overflow-hidden"
+        onMouseEnter={() => setPaused(true)}
+        onMouseLeave={() => setPaused(false)}
+      >
         <div className="absolute inset-0">
           {slides.map((movie, i) => (
             <div
@@ -124,6 +163,27 @@ export default function Hero({ movies, loading }: HeroProps) {
           <div className="pointer-events-none absolute inset-0 z-[2] bg-[linear-gradient(105deg,rgba(11,13,18,0.92)_0%,rgba(11,13,18,0.55)_42%,rgba(11,13,18,0.25)_100%)]" />
           <div className="pointer-events-none absolute inset-0 z-[2] bg-[linear-gradient(to_top,rgba(11,13,18)_0%,rgba(11,13,18,0.45)_38%,transparent_68%)]" />
         </div>
+
+        {canRotate && (
+          <>
+            <button
+              type="button"
+              onClick={goPrev}
+              className="absolute left-3 md:left-5 top-1/2 -translate-y-1/2 z-[4] ff-icon-btn border border-line bg-background/50 hover:bg-background/80 backdrop-blur-sm"
+              aria-label="Previous title"
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+            <button
+              type="button"
+              onClick={goNext}
+              className="absolute right-3 md:right-5 top-1/2 -translate-y-1/2 z-[4] ff-icon-btn border border-line bg-background/50 hover:bg-background/80 backdrop-blur-sm"
+              aria-label="Next title"
+            >
+              <ChevronRight className="w-5 h-5" />
+            </button>
+          </>
+        )}
 
         <div className="relative z-[3] h-full mx-auto w-full max-w-7xl px-5 md:px-12 lg:px-16 flex flex-col justify-end pb-16 md:pb-24 pt-28">
           <div className="max-w-3xl" key={featuredMovie.id}>
@@ -168,10 +228,10 @@ export default function Hero({ movies, loading }: HeroProps) {
                     aria-selected={i === index}
                     aria-label={movie.title}
                     onClick={() => setIndex(i)}
-                    className={`h-1 transition-all duration-300 ${
+                    className={`h-1.5 transition-all duration-300 ${
                       i === index
-                        ? "w-8 bg-brand"
-                        : "w-4 bg-foreground/25 hover:bg-foreground/45"
+                        ? "w-9 bg-brand"
+                        : "w-5 bg-foreground/30 hover:bg-foreground/50"
                     }`}
                   />
                 ))}
